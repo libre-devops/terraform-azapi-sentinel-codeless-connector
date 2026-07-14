@@ -255,9 +255,15 @@ variable "definition_name" {
 }
 
 variable "retry_error_message_regex" {
-  description = "Regular expressions azapi retries on when a connector call fails. Defaults to the freshly created workspace propagation race and transient service noise; null disables retries."
+  description = <<DESC
+Regular expressions azapi retries on when a connector call fails. Defaults cover the Sentinel
+onboarding propagation race (a workspace onboarded in the same apply can still report "not onboarded
+to Microsoft Sentinel" for a short while when the connector reads it), the freshly created workspace
+race, and transient service noise. azapi retries matching errors with backoff until the operation
+timeout. Set null to disable retries.
+DESC
   type        = list(string)
-  default     = ["(?i)workspace could not be found", "(?i)not found", "(?i)too many requests", "(?i)service unavailable", "(?i)internal server error"]
+  default     = ["(?i)not onboarded to Microsoft Sentinel", "(?i)workspace could not be found", "(?i)not found", "(?i)too many requests", "(?i)service unavailable", "(?i)internal server error"]
 }
 
 variable "workspace_id" {

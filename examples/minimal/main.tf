@@ -97,6 +97,9 @@ module "data_collection" {
         streams       = [local.stream]
         destinations  = ["law"]
         output_stream = local.stream
+        # A custom-stream direct-ingestion data flow needs a transform; "source" passes rows
+        # through unchanged into the destination table.
+        transform_kql = "source"
       }]
     }
   }
