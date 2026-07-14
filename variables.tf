@@ -1,8 +1,15 @@
 variable "connections" {
   description = <<DESC
 The poller connections (RestApiPoller dataConnectors) keyed by connection name, all linked to this
-module's definition. One definition can carry several connections that poll different endpoints. Per
-connection:
+module's definition. One definition can carry several connections that poll different endpoints.
+
+IMPORTANT: Sentinel runs a LIVE connectivity check when it creates a connection, actually calling the
+api_endpoint (and, for OAuth2, acquiring a token from token_endpoint) before the resource is
+accepted. A connection therefore needs a reachable endpoint and working credentials to apply;
+placeholder hosts or fake credentials fail create with a 400 "Connectivity check failed". The bounded
+create timeout (see resource_timeouts) keeps that failure fast rather than a long hang.
+
+Per connection:
 
 - api_endpoint (required): the source REST URL to poll.
 - dcr (required): where polled events land, an object of:

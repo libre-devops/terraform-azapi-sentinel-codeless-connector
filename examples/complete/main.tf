@@ -1,8 +1,11 @@
-# Complete call: every feature. Two poller connections on one connector (an OAuth2 client-
-# credentials poll of Microsoft Graph and an API-key poll), a fully overridden UI page (custom
-# graph and sample queries, an OAuthForm instruction, custom prerequisite permissions, preview
-# flag), and the whole supporting stack composed so it is runnable. Applied then destroyed in one
-# CI run.
+# Complete call: the maximum applyable surface. Two poller connections on one connector (both
+# API-key pollers of the public GitHub advisories feed, one paged via the Link header, one filtered
+# by a query parameter), a fully overridden UI page (custom graph and sample queries, an instruction
+# step, custom prerequisite permissions, preview flag), and the whole supporting stack composed so it
+# is runnable. Applied then destroyed in one CI run. OAuth2 and other credentialed auth types are
+# modelled and documented in variables.tf but are not shown live here: Sentinel connectivity-checks a
+# connection on create (it really calls the endpoint and acquires the token), so a public runnable
+# example cannot use them without real credentials.
 locals {
   location = lookup(var.regions, var.loc, "uksouth")
   rg_name  = "rg-${var.short}-${var.loc}-${terraform.workspace}-002"
@@ -124,7 +127,7 @@ module "codeless_connector" {
   connector_ui = {
     title       = "Example Multi-Source Connector"
     publisher   = "Libre DevOps"
-    description = "Demonstrates OAuth2 and API-key polling into one Sentinel connector."
+    description = "Demonstrates multiple API-key pollers landing on one Sentinel connector."
     graph_table = local.table
     is_preview  = true
 
@@ -136,32 +139,31 @@ module "codeless_connector" {
     ]
 
     custom_permissions = [
-      { name = "API credentials", description = "The source API's client id and secret (OAuth2) or key are required." },
+      { name = "API credentials", description = "For a private source, an API key or token for the endpoint is required." },
     ]
 
+    # An overridden instruction step (title + description, the shape the connectorUiConfig accepts).
+    # A widget-bearing step such as an OAuthForm would only make sense with an OAuth2 connection.
     instruction_steps = [
       {
-        title       = "Authorize the connector"
-        description = "Provide the OAuth2 application credentials, then connect."
-        instructions = [
-          {
-            type = "OAuthForm"
-            parameters = {
-              clientIdLabel         = "Client ID"
-              clientSecretLabel     = "Client Secret"
-              connectButtonLabel    = "Connect"
-              disconnectButtonLabel = "Disconnect"
-            }
-          },
-        ]
+        title       = "Connect the source"
+        description = "The public advisories feed needs no credential beyond a User-Agent. For a private source, supply its API key in the connection's request headers."
       },
     ]
   }
 
+  # Two connections on one definition, exercising the connection surface (multiple pollers, query
+  # parameters, response shaping, paging, rate limiting). IMPORTANT: Sentinel runs a LIVE
+  # connectivity check when it creates a RestApiPoller connection, actually calling the endpoint (and
+  # acquiring the token for OAuth2). So a runnable example must point at reachable endpoints with
+  # working request settings; placeholder hosts or credentials fail the check. Both connections poll
+  # the public GitHub advisories API (no credential beyond a User-Agent). OAuth2 and other
+  # credentialed auth types are fully modelled and documented in variables.tf, but cannot be shown in
+  # a public runnable example because the connectivity check would need real credentials.
   connections = {
-    # OAuth2 client-credentials poll of Microsoft Graph audit logs.
-    "graph-audit" = {
-      api_endpoint = "https://graph.microsoft.com/v1.0/auditLogs/directoryAudits"
+    # A paged poll: GitHub paginates with the RFC 5988 Link header.
+    "advisories-recent" = {
+      api_endpoint = "https://api.github.com/advisories"
 
       dcr = {
         data_collection_endpoint          = module.data_collection.data_collection_endpoints[local.dce_name].logs_ingestion_endpoint
@@ -170,64 +172,55 @@ module "codeless_connector" {
       }
 
       auth = {
-        type           = "OAuth2"
-        grant_type     = "client_credentials"
-        client_id      = "00000000-0000-0000-0000-000000000000"
-        client_secret  = "example-secret-supply-from-key-vault"
-        token_endpoint = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-        scope          = "https://graph.microsoft.com/.default"
+        type         = "APIKey"
+        api_key      = "unused"
+        api_key_name = "X-Poll-Client"
       }
 
-      http_method               = "Get"
-      query_window_in_min       = 15
-      query_time_format         = "yyyy-MM-ddTHH:mm:ssZ"
-      start_time_attribute_name = "startDateTime"
-      end_time_attribute_name   = "endDateTime"
-      rate_limit_qps            = 10
-      retry_count               = 4
-      timeout_in_seconds        = 60
-      headers                   = { Accept = "application/json" }
-
-      response = {
-        format                   = "json"
-        events_json_paths        = ["$.value"]
-        success_status_json_path = "$.status"
-        success_status_value     = "ok"
+      http_method         = "Get"
+      query_window_in_min = 5
+      rate_limit_qps      = 10
+      timeout_in_seconds  = 60
+      headers = {
+        Accept       = "application/vnd.github+json"
+        "User-Agent" = "libre-devops-sentinel-ccf"
       }
 
-      paging = {
-        pagingType            = "NextPageUrl"
-        nextPageTokenJsonPath = "$.\"@odata.nextLink\""
-        hasNextFlagJsonPath   = "$.\"@odata.nextLink\""
-      }
-    }
-
-    # API-key poll of a second source into the same table.
-    "vendor-events" = {
-      api_endpoint = "https://api.example-vendor.com/v2/events"
-
-      dcr = {
-        data_collection_endpoint          = module.data_collection.data_collection_endpoints[local.dce_name].logs_ingestion_endpoint
-        data_collection_rule_immutable_id = module.data_collection.data_collection_rule_immutable_ids[local.dcr_name]
-        stream_name                       = local.stream
-      }
-
-      auth = {
-        type               = "APIKey"
-        api_key            = "example-key-supply-from-key-vault"
-        api_key_name       = "X-Api-Key"
-        api_key_identifier = "Bearer"
-      }
-
-      data_type   = "VendorEvents"
-      http_method = "Get"
-
-      # The response and paging attributes are set here too so both connection objects present the
-      # same attribute shape: Terraform converts a heterogeneous object map to map(object(...)) only
-      # when every element carries the same optional attributes.
       response = {
         format            = "json"
-        events_json_paths = ["$.events"]
+        events_json_paths = ["$"]
+      }
+      paging = { pagingType = "LinkHeader" }
+    }
+
+    # A filtered poll of the same source into the same table, showing query parameters.
+    "advisories-critical" = {
+      api_endpoint = "https://api.github.com/advisories"
+
+      dcr = {
+        data_collection_endpoint          = module.data_collection.data_collection_endpoints[local.dce_name].logs_ingestion_endpoint
+        data_collection_rule_immutable_id = module.data_collection.data_collection_rule_immutable_ids[local.dcr_name]
+        stream_name                       = local.stream
+      }
+
+      auth = {
+        type         = "APIKey"
+        api_key      = "unused"
+        api_key_name = "X-Poll-Client"
+      }
+
+      http_method      = "Get"
+      query_parameters = { severity = "critical" }
+      headers = {
+        Accept       = "application/vnd.github+json"
+        "User-Agent" = "libre-devops-sentinel-ccf"
+      }
+
+      # response present on both so the map unifies (response and paging are the object-typed
+      # optionals that must be consistently shaped across elements).
+      response = {
+        format            = "json"
+        events_json_paths = ["$"]
       }
       paging = null
     }
