@@ -19,6 +19,16 @@ resource "azapi_resource" "definition" {
   schema_validation_enabled = false
 
   retry = var.retry_error_message_regex == null ? null : { error_message_regex = var.retry_error_message_regex }
+
+  # Bound the create so a misconfigured connector cannot leave azapi polling a stuck Sentinel
+  # provisioning operation for the provider default (30m); a shorter create surfaces the real error
+  # fast in CI. Delete stays generous because tearing a connector down can be slow.
+  timeouts {
+    create = var.resource_timeouts.create
+    read   = var.resource_timeouts.read
+    update = var.resource_timeouts.update
+    delete = var.resource_timeouts.delete
+  }
 }
 
 # One RestApiPoller connection per map entry, each linked to the definition. The poller runs as
@@ -42,6 +52,16 @@ resource "azapi_resource" "connections" {
   schema_validation_enabled = false
 
   retry = var.retry_error_message_regex == null ? null : { error_message_regex = var.retry_error_message_regex }
+
+  # Bound the create so a misconfigured connection cannot leave azapi polling a stuck Sentinel
+  # provisioning operation for the provider default (30m); a shorter create surfaces the real error
+  # fast in CI. Delete stays generous because tearing a connector down can be slow.
+  timeouts {
+    create = var.resource_timeouts.create
+    read   = var.resource_timeouts.read
+    update = var.resource_timeouts.update
+    delete = var.resource_timeouts.delete
+  }
 
   # The connection references the definition by name; the definition must exist first.
   depends_on = [azapi_resource.definition]

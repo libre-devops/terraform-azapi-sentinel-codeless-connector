@@ -139,12 +139,13 @@ module "codeless_connector" {
         stream_name                       = local.stream
       }
 
-      # The public advisories endpoint needs no key; APIKey with an empty header keeps the request
-      # unauthenticated while satisfying the auth contract.
+      # The public advisories endpoint needs no credential, but a RestApiPoller still requires a
+      # populated auth block (an empty header name is rejected). Place a dummy key in a harmless
+      # custom header the endpoint ignores, which keeps the request effectively anonymous.
       auth = {
         type         = "APIKey"
         api_key      = "unused"
-        api_key_name = ""
+        api_key_name = "X-Poll-Client"
       }
 
       http_method = "Get"

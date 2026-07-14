@@ -254,16 +254,36 @@ variable "definition_name" {
   }
 }
 
+variable "resource_timeouts" {
+  description = <<DESC
+azapi operation timeouts for the definition and connection resources. The create timeout is
+deliberately bounded (default 15m, below the azapi provider default of 30m): a misconfigured
+connector otherwise leaves azapi polling a stuck Sentinel provisioning operation for the full
+default, masking the real error behind a long hang. A shorter create makes CI fail fast and surface
+the underlying error. Delete stays generous because tearing a connector down can be slow.
+DESC
+  type = object({
+    create = optional(string, "15m")
+    read   = optional(string, "5m")
+    update = optional(string, "15m")
+    delete = optional(string, "30m")
+  })
+  default = {}
+}
+
 variable "retry_error_message_regex" {
   description = <<DESC
-Regular expressions azapi retries on when a connector call fails. Defaults cover the Sentinel
-onboarding propagation race (a workspace onboarded in the same apply can still report "not onboarded
-to Microsoft Sentinel" for a short while when the connector reads it), the freshly created workspace
-race, and transient service noise. azapi retries matching errors with backoff until the operation
-timeout. Set null to disable retries.
+Regular expressions azapi retries on when a connector call fails. The default covers only the
+genuinely transient races: the Sentinel onboarding propagation race (a workspace onboarded in the
+same apply can still report "not onboarded to Microsoft Sentinel" for a short while when the
+connector reads it), the freshly created workspace race, and throttling. It deliberately does NOT
+retry generic "not found" or 5xx errors, because for a connector those are usually persistent
+configuration faults that should fail fast (with the bounded create timeout) rather than be retried
+for the whole timeout window. Add patterns here if your endpoint needs them. Set null to disable
+retries.
 DESC
   type        = list(string)
-  default     = ["(?i)not onboarded to Microsoft Sentinel", "(?i)workspace could not be found", "(?i)not found", "(?i)too many requests", "(?i)service unavailable", "(?i)internal server error"]
+  default     = ["(?i)not onboarded to Microsoft Sentinel", "(?i)workspace could not be found", "(?i)too many requests"]
 }
 
 variable "workspace_id" {
