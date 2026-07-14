@@ -61,6 +61,11 @@ module "data_collection" {
   source  = "libre-devops/data-collection/azurerm"
   version = "~> 4.0"
 
+  # The DCR output stream (Custom-<table>) targets the destination custom table, so the table must
+  # exist first. The workspace id output resolves once the workspace exists, not once its custom
+  # tables finish, so order the whole workspace module ahead of the DCR explicitly.
+  depends_on = [module.law]
+
   resource_group_id = module.rg.ids[local.rg_name]
   location          = local.location
   tags              = module.tags.tags
@@ -101,6 +106,12 @@ module "data_collection" {
 
 module "codeless_connector" {
   source = "../../"
+
+  # The connector definition is created under the Sentinel-onboarded workspace. Onboarding is a
+  # separate resource inside the workspace module that the workspace id output does not wait for, so
+  # order the whole module ahead of the connector; the module's retry regex covers residual
+  # onboarding propagation lag after that.
+  depends_on = [module.law]
 
   workspace_id    = module.law.workspace_ids[local.law_name]
   definition_name = "ldo-example-multi-connector"
