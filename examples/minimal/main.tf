@@ -11,7 +11,7 @@ locals {
   dcr_name = "dcr-${var.short}-${var.loc}-${terraform.workspace}-001"
 
   table  = "GitHubAdvisories_CL"
-  stream = "Custom-GitHubAdvisories"
+  stream = "Custom-${local.table}" # the DCR output stream must name the destination custom table (Custom-<table>)
 }
 
 module "tags" {
