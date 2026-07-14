@@ -149,7 +149,14 @@ module "codeless_connector" {
       }
 
       http_method = "Get"
-      headers     = { Accept = "application/vnd.github+json" }
+
+      # Sentinel runs a live connectivity check on create. GitHub rejects any API request without a
+      # User-Agent header (403), so it must be set; the advisories endpoint then serves
+      # unauthenticated (rate-limited) requests.
+      headers = {
+        Accept       = "application/vnd.github+json"
+        "User-Agent" = "libre-devops-sentinel-ccf"
+      }
 
       response = {
         format            = "json"
